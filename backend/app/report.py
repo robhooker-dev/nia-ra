@@ -101,11 +101,20 @@ def build_docx(draft: dict) -> bytes:
 
 
 def build_pdf(draft: dict) -> bytes:
+    from xml.sax.saxutils import escape
+
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.lib.colors import HexColor
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+    def safe_html(text: str) -> str:
+        """Escape free text before it reaches Paragraph -- Paragraph parses
+        a mini-XML subset, so an officer typing an ordinary '&' or '<' in
+        the rationale/conditions/review-date fields would otherwise break
+        the export outright. Escape first, then add <br/> line breaks."""
+        return escape(str(text or "")).replace("\n", "<br/>")
 
     styles = getSampleStyleSheet()
     notice_style = ParagraphStyle("notice", parent=styles["Normal"], textColor=HexColor("#b00000"), alignment=1, fontSize=9)
@@ -144,15 +153,15 @@ def build_pdf(draft: dict) -> bytes:
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("Rationale", h2))
-    story.append(Paragraph((draft.get("rationale_text") or "").replace("\n", "<br/>"), body))
+    story.append(Paragraph(safe_html(draft.get("rationale_text")), body))
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("Recommended conditions/mitigations", h2))
-    story.append(Paragraph((draft.get("conditions_text") or "(none)").replace("\n", "<br/>"), body))
+    story.append(Paragraph(safe_html(draft.get("conditions_text")) or "(none)", body))
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("Recommended review date", h2))
-    story.append(Paragraph(draft.get("review_date") or "(not applicable)", body))
+    story.append(Paragraph(safe_html(draft.get("review_date")) or "(not applicable)", body))
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("Policy basis", h2))
@@ -177,14 +186,32 @@ def build_pdf(draft: dict) -> bytes:
 
 
 def _table(rows):
-    from reportlab.platypus import Table, TableStyle
-    from reportlab.lib.colors import HexColor
+    """rows: list of [label, value] plain strings. Cell text is wrapped in
+    Paragraph flowables -- a plain string in a reportlab Table cell is
+    drawn at its natural width and does not wrap, so any value longer than
+    its column just overflows and visually bleeds into the next cell/row
+    rather than wrapping onto a second line."""
+    from xml.sax.saxutils import escape
 
-    t = Table(rows, colWidths=[160, 320])
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.platypus import Paragraph, Table, TableStyle
+
+    base = getSampleStyleSheet()["Normal"]
+    label_style = ParagraphStyle("cell_label", parent=base, fontSize=9, leading=12, fontName="Helvetica-Bold")
+    value_style = ParagraphStyle("cell_value", parent=base, fontSize=9, leading=12)
+
+    wrapped = [
+        [Paragraph(escape(str(label)), label_style), Paragraph(escape(str(value)), value_style)]
+        for label, value in rows
+    ]
+    # A4 usable width is ~451pt with default L/R margins -- stay safely under it.
+    t = Table(wrapped, colWidths=[130, 300])
     t.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#cccccc")),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (0, -1), HexColor("#f2f2f2")),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     return t
