@@ -735,7 +735,7 @@ function renderDraft(body) {
 }
 
 async function doExport(format) {
-  const status = document.getElementById("export-status");
+  const status = document.getElementById("export-report-status");
   status.innerHTML = `<div class="warning-box">Generating ${format.toUpperCase()}…</div>`;
   const draft = {
     mode: state.mode,
