@@ -44,5 +44,18 @@
     ]
   },
 
-  "policy_basis": ["Vetting APP", "Code of Ethics", "Counter Corruption APP"]
+  "policy_basis": ["Vetting APP", "Code of Ethics", "Counter Corruption APP"],
+
+  "letters": {
+    "_comment": "Starter conditions and appeal boilerplate for the decision letter sent to the declarant. Editable -- these are generic placeholders, not force-specific policy.",
+    "standard_conditions": [
+      "Do not conduct checks on police systems relating to the associate",
+      "Do not disclose any police information, intelligence, or operational details to the associate",
+      "Report immediately if the nature, frequency, or circumstances of the association change",
+      "Report immediately if the associate is charged with, or becomes subject to, any criminal investigation",
+      "This association must be re-declared if there is any material change in circumstances"
+    ],
+    "appeal_recipient_title": "Head of Professional Standards Department",
+    "appeal_window_days": 21
+  }
 }

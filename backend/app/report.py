@@ -21,6 +21,82 @@ def _mode_label(mode: str) -> str:
     return "Notifiable Inappropriate Association" if mode == "NIA" else "Business Interest"
 
 
+_POSITIVE_DECISIONS = ("Approved", "Continue")
+_NEGATIVE_DECISIONS = ("Declined", "Cease")
+
+
+def _letter_sections(letter: dict) -> list[tuple[str, object]]:
+    """Assembles the letter body as an ordered list of (kind, content)
+    tuples -- "plain" (a paragraph string), "heading" (a sub-heading
+    string), or "bullets" (a list of strings) -- shared by both the DOCX
+    and PDF builders so the two formats can never drift apart.
+
+    The procedural boilerplate (salutation, outcome framing, appeal
+    procedure, sign-off) is a deterministic template, same principle as
+    the risk assessment's statutory sections -- only the reasons
+    paragraph (AI-drafted, officer-edited) and the conditions list
+    (officer-selected) are variable content slotted into it."""
+    mode = letter["mode"]
+    decision = letter["decision"]
+    mode_label = "notifiable association" if mode == "NIA" else "business interest"
+    declarant = letter.get("declarant_name") or ""
+    case_ref = letter.get("case_reference") or ""
+
+    sections: list[tuple[str, object]] = []
+    sections.append(("plain", letter.get("date") or ""))
+    sections.append(("plain", "PRIVATE & CONFIDENTIAL"))
+    sections.append(("plain", f"Dear {declarant}," if declarant else "Dear Sir/Madam,"))
+    subject = f"Re: {_mode_label(mode)} Declaration" + (f" -- {case_ref}" if case_ref else "")
+    sections.append(("plain", subject))
+
+    if decision == "Approved":
+        sections.append(("plain",
+            f"Thank you for your {mode_label} declaration. I am writing to confirm that, "
+            "having considered the information provided, your declared business interest "
+            "has been APPROVED, subject to the conditions set out below."))
+    elif decision == "Declined":
+        sections.append(("plain",
+            f"Thank you for your {mode_label} declaration. I am writing to inform you that, "
+            "having considered the information provided, your declared business interest "
+            "has NOT been approved."))
+    elif decision == "Continue":
+        grade = letter.get("grade") or "assessed"
+        sections.append(("plain",
+            f"Thank you for your {mode_label} declaration. Having assessed the information "
+            f"provided, this association has been assessed as {grade} risk and may continue, "
+            "subject to the conditions set out below."))
+    elif decision == "Cease":
+        grade = letter.get("grade") or "assessed"
+        sections.append(("plain",
+            f"Thank you for your {mode_label} declaration. Having assessed the information "
+            f"provided, this association has been assessed as {grade} risk. I am writing to "
+            "inform you that this association must now cease."))
+
+    if decision in _NEGATIVE_DECISIONS:
+        sections.append(("heading", "Reasons for this decision"))
+        sections.append(("plain", letter.get("reasons_text") or "(reasons not yet drafted)"))
+
+    if decision in _POSITIVE_DECISIONS:
+        conditions = [c.strip() for c in (letter.get("conditions_text") or "").splitlines() if c.strip()]
+        if conditions:
+            sections.append(("heading", "Conditions"))
+            sections.append(("bullets", conditions))
+        review_label = "This approval" if decision == "Approved" else "This"
+        sections.append(("plain", f"{review_label} will be reviewed on {letter.get('review_date') or '(review date not set)'}."))
+
+    if decision in _NEGATIVE_DECISIONS:
+        recipient = letter.get("appeal_recipient_title") or "Head of Professional Standards Department"
+        days = letter.get("appeal_window_days") or 21
+        sections.append(("plain",
+            f"If you wish to appeal this decision, you may do so in writing to the {recipient} "
+            f"within {days} days of the date of this letter, setting out the grounds for your appeal."))
+
+    sections.append(("plain", "Yours sincerely,"))
+    sections.append(("plain", letter.get("preparer_name") or ""))
+
+    return sections
+
+
 def build_docx(draft: dict) -> bytes:
     import docx
     from docx.shared import Pt, RGBColor
@@ -180,6 +256,67 @@ def build_pdf(draft: dict) -> bytes:
         ["Reviewing officer date", ""],
     ]
     story.append(_table(sign_rows))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def build_letter_docx(letter: dict) -> bytes:
+    import docx
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    d = docx.Document()
+
+    notice = d.add_paragraph()
+    run = notice.add_run(PROTOTYPE_NOTICE)
+    run.bold = True
+    run.font.color.rgb = RGBColor(0xB0, 0x00, 0x00)
+    run.font.size = Pt(9)
+    notice.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    d.add_paragraph()
+
+    for kind, content in _letter_sections(letter):
+        if kind == "heading":
+            d.add_heading(content, level=3)
+        elif kind == "bullets":
+            for item in content:
+                d.add_paragraph(item, style="List Bullet")
+        else:
+            d.add_paragraph(content)
+
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+def build_letter_pdf(letter: dict) -> bytes:
+    from xml.sax.saxutils import escape
+
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer
+
+    styles = getSampleStyleSheet()
+    notice_style = ParagraphStyle("notice", parent=styles["Normal"], textColor=HexColor("#b00000"), alignment=1, fontSize=9)
+    body = styles["BodyText"]
+    heading = styles["Heading3"]
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm)
+    story = [Paragraph(PROTOTYPE_NOTICE, notice_style), Spacer(1, 16)]
+
+    for kind, content in _letter_sections(letter):
+        if kind == "heading":
+            story.append(Paragraph(escape(str(content)), heading))
+        elif kind == "bullets":
+            items = [ListItem(Paragraph(escape(str(c)), body)) for c in content]
+            story.append(ListFlowable(items, bulletType="bullet"))
+        else:
+            story.append(Paragraph(escape(str(content)).replace("\n", "<br/>"), body))
+        story.append(Spacer(1, 8))
 
     doc.build(story)
     return buf.getvalue()

@@ -16,7 +16,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import assess, config, extract, facts as facts_module, llm, report, rules
+from . import assess, config, decision, extract, facts as facts_module, llm, report, rules
 
 app = FastAPI(title="NIA/BI Risk Assessment Generator (Prototype)")
 
@@ -157,6 +157,63 @@ def export_endpoint(body: ExportBody):
         data = report.build_pdf(draft)
         media_type = "application/pdf"
         filename = "risk-assessment.pdf"
+    else:
+        raise HTTPException(400, "format must be 'docx' or 'pdf'.")
+
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class DecisionReasonsBody(BaseModel):
+    mode: str
+    decision: str  # "Declined" | "Cease"
+    rationale_text: str = ""
+
+
+@app.post("/api/decision-letter-reasons")
+async def decision_letter_reasons_endpoint(body: DecisionReasonsBody):
+    mode = body.mode.upper()
+    if mode not in ("NIA", "BI"):
+        raise HTTPException(400, "mode must be 'NIA' or 'BI'.")
+    if body.decision not in ("Declined", "Cease"):
+        raise HTTPException(400, "decision must be 'Declined' or 'Cease'.")
+    return await decision.draft_applicant_reasons(mode, body.decision, body.rationale_text)
+
+
+class Letter(BaseModel):
+    mode: str
+    decision: str  # "Approved" | "Declined" | "Continue" | "Cease"
+    date: str = ""
+    declarant_name: str = ""
+    case_reference: str = ""
+    grade: Optional[str] = None
+    conditions_text: str = ""
+    reasons_text: str = ""
+    review_date: str = ""
+    appeal_window_days: int = 21
+    appeal_recipient_title: str = "Head of Professional Standards Department"
+    preparer_name: str = ""
+
+
+class ExportLetterBody(BaseModel):
+    letter: Letter
+    format: str  # "docx" | "pdf"
+
+
+@app.post("/api/export-letter")
+def export_letter_endpoint(body: ExportLetterBody):
+    letter = body.letter.model_dump()
+    if body.format == "docx":
+        data = report.build_letter_docx(letter)
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename = "decision-letter.docx"
+    elif body.format == "pdf":
+        data = report.build_letter_pdf(letter)
+        media_type = "application/pdf"
+        filename = "decision-letter.pdf"
     else:
         raise HTTPException(400, "format must be 'docx' or 'pdf'.")
 

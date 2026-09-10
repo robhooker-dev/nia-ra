@@ -3,8 +3,14 @@
  * (no localStorage, no server-side session) -- reload the page and the
  * session is gone, by design (PRD Section 9: stateless, session-only). */
 
-const STEPS = ["mode", "upload", "facts", "assess", "draft"];
-const STEP_LABELS = { mode: "Mode", upload: "Upload", facts: "Confirm facts", assess: "Risk assessment", draft: "Review & export" };
+const STEPS = ["mode", "upload", "facts", "assess", "decision", "draft"];
+const STEP_LABELS = { mode: "Mode", upload: "Upload", facts: "Confirm facts", assess: "Risk assessment", decision: "Decision", draft: "Review & export" };
+
+function addDays(dateStr, days) {
+  const d = dateStr ? new Date(dateStr) : new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 const state = {
   step: "mode",
@@ -29,6 +35,19 @@ const state = {
     review_date: "",
     preparer_name: "",
     preparer_date: "",
+  },
+  decision: {
+    outcome: null, // "Approved" | "Declined" | "Continue" | "Cease"
+    declarant_name: "",
+    case_reference: "",
+    conditions_text: "",
+    checkedStandard: [],
+    reasons_text: "",
+    reasons_warning: null,
+    review_date: "",
+    appeal_window_days: 21,
+    appeal_recipient_title: "Head of Professional Standards Department",
+    preparer_name: "",
   },
 };
 
@@ -75,6 +94,7 @@ function render() {
   else if (state.step === "upload") renderUpload(body);
   else if (state.step === "facts") renderFacts(body);
   else if (state.step === "assess") renderAssess(body);
+  else if (state.step === "decision") renderDecision(body);
   else if (state.step === "draft") renderDraft(body);
 }
 
@@ -411,12 +431,158 @@ function wireGradeSelector(body, a) {
     state.draft.rationale_text = a && a.rationale ? a.rationale.map(r => "- " + r.text).join("\n") : "";
     state.draft.conditions_text = a && a.mitigations ? a.mitigations.map(m => "- " + m).join("\n") : "";
     state.draft.review_date = (a && a.review_date_suggestion) || "";
-    state.step = "draft";
+    // Seed the decision step from what's already known -- the officer
+    // still has to explicitly choose the outcome, this just avoids
+    // re-typing the declarant's name and a sensible starting review date.
+    state.decision.declarant_name = (state.facts.declarant_name || {}).value || "";
+    state.decision.case_reference = state.draft.case_reference;
+    state.decision.conditions_text = state.draft.conditions_text;
+    state.decision.review_date = addDays(state.draft.date, 365);
+    state.decision.appeal_window_days = (state.rules.letters && state.rules.letters.appeal_window_days) || 21;
+    state.decision.appeal_recipient_title = (state.rules.letters && state.rules.letters.appeal_recipient_title) || "Head of Professional Standards Department";
+    state.decision.preparer_name = state.draft.preparer;
+    state.step = "decision";
     render();
   };
 }
 
-// ---------------- Step 5: Draft & export ----------------
+// ---------------- Step 5: Decision & letter to applicant ----------------
+
+function renderDecision(body) {
+  const dec = state.decision;
+  const isBI = state.mode === "BI";
+  const positiveLabel = isBI ? "Approve" : "Association may continue";
+  const negativeLabel = isBI ? "Decline" : "Association must cease";
+  const positiveValue = isBI ? "Approved" : "Continue";
+  const negativeValue = isBI ? "Declined" : "Cease";
+  const standardConditions = (state.rules.letters && state.rules.letters.standard_conditions) || [];
+
+  const outcomeButtons = `
+    <div class="mode-cards">
+      <div class="mode-card ${dec.outcome === positiveValue ? "selected" : ""}" id="pick-positive">
+        <h3>${escapeHtml(positiveLabel)}</h3>
+      </div>
+      <div class="mode-card ${dec.outcome === negativeValue ? "selected" : ""}" id="pick-negative">
+        <h3>${escapeHtml(negativeLabel)}</h3>
+      </div>
+    </div>`;
+
+  let detailHtml = "";
+  if (dec.outcome === positiveValue) {
+    const checklist = standardConditions.map((c, i) => `
+      <div class="field" style="margin-bottom:6px;">
+        <label style="display:flex; align-items:flex-start; gap:8px; font-weight:400;">
+          <input type="checkbox" data-cond-idx="${i}" ${dec.checkedStandard.includes(c) ? "checked" : ""} style="margin-top:3px;">
+          <span>${escapeHtml(c)}</span>
+        </label>
+      </div>`).join("");
+    detailHtml = `
+      <fieldset>
+        <legend>Standard conditions (tick any that apply)</legend>
+        ${checklist}
+      </fieldset>
+      <div class="field">
+        <label>Conditions to include in the letter (edit freely)</label>
+        <textarea id="dec-conditions" rows="5">${escapeHtml(dec.conditions_text)}</textarea>
+      </div>
+      <div class="field">
+        <label>Review date</label>
+        <input type="text" id="dec-review-date" value="${escapeHtml(dec.review_date)}">
+      </div>`;
+  } else if (dec.outcome === negativeValue) {
+    detailHtml = `
+      <div class="field">
+        <button class="btn btn-secondary" id="draft-reasons-btn">Draft reasons with AI</button>
+      </div>
+      ${dec.reasons_warning ? `<div class="warning-box">${escapeHtml(dec.reasons_warning)}</div>` : ""}
+      <div class="field">
+        <label>Reasons for this decision (edit freely -- this is what the applicant will read)</label>
+        <textarea id="dec-reasons" rows="6">${escapeHtml(dec.reasons_text)}</textarea>
+      </div>
+      <div class="field">
+        <label>Appeal recipient</label>
+        <input type="text" id="dec-appeal-recipient" value="${escapeHtml(dec.appeal_recipient_title)}">
+      </div>
+      <div class="field">
+        <label>Appeal window (days)</label>
+        <input type="text" id="dec-appeal-days" value="${escapeHtml(String(dec.appeal_window_days))}">
+      </div>`;
+  }
+
+  body.innerHTML = `
+    <div class="panel">
+      <h2>Decision</h2>
+      <p>This is the officer's decision, not the AI's -- the outcome below is what gets recorded and sent to the applicant. The AI can help draft the reasons for a ${isBI ? "decline" : "cease"} letter, but never chooses the outcome itself.</p>
+
+      <div class="field"><label>Applicant's name</label><input type="text" id="dec-declarant-name" value="${escapeHtml(dec.declarant_name)}"></div>
+      <div class="field"><label>Case reference (optional)</label><input type="text" id="dec-case-ref" value="${escapeHtml(dec.case_reference)}"></div>
+
+      <h3>Outcome</h3>
+      ${outcomeButtons}
+      <div id="decision-detail" style="margin-top:16px;">${detailHtml}</div>
+
+      <div class="btn-row">
+        <button class="btn" id="continue-to-draft-btn" ${dec.outcome ? "" : "disabled"}>Continue to review &amp; export</button>
+        <button class="btn btn-secondary" id="back-to-assess-from-decision-btn">Back</button>
+      </div>
+    </div>`;
+
+  document.getElementById("dec-declarant-name").oninput = e => { dec.declarant_name = e.target.value; };
+  document.getElementById("dec-case-ref").oninput = e => { dec.case_reference = e.target.value; };
+
+  document.getElementById("pick-positive").onclick = () => { dec.outcome = positiveValue; render(); };
+  document.getElementById("pick-negative").onclick = () => { dec.outcome = negativeValue; render(); };
+
+  if (dec.outcome === positiveValue) {
+    body.querySelectorAll("[data-cond-idx]").forEach(cb => {
+      cb.onchange = () => {
+        const text = standardConditions[Number(cb.dataset.condIdx)];
+        if (cb.checked) {
+          if (!dec.checkedStandard.includes(text)) dec.checkedStandard.push(text);
+          const ta = document.getElementById("dec-conditions");
+          ta.value = ta.value ? ta.value + "\n- " + text : "- " + text;
+          dec.conditions_text = ta.value;
+        } else {
+          dec.checkedStandard = dec.checkedStandard.filter(c => c !== text);
+        }
+      };
+    });
+    document.getElementById("dec-conditions").oninput = e => { dec.conditions_text = e.target.value; };
+    document.getElementById("dec-review-date").oninput = e => { dec.review_date = e.target.value; };
+  } else if (dec.outcome === negativeValue) {
+    document.getElementById("draft-reasons-btn").onclick = () => doDraftReasons(dec.outcome === "Declined" ? "Declined" : "Cease");
+    document.getElementById("dec-reasons").oninput = e => { dec.reasons_text = e.target.value; };
+    document.getElementById("dec-appeal-recipient").oninput = e => { dec.appeal_recipient_title = e.target.value; };
+    document.getElementById("dec-appeal-days").oninput = e => { dec.appeal_window_days = parseInt(e.target.value, 10) || 21; };
+  }
+
+  document.getElementById("continue-to-draft-btn").onclick = () => {
+    state.step = "draft";
+    render();
+  };
+  document.getElementById("back-to-assess-from-decision-btn").onclick = () => { state.step = "assess"; render(); };
+}
+
+async function doDraftReasons(decisionOutcome) {
+  const dec = state.decision;
+  dec.reasons_warning = "Drafting…";
+  render();
+  try {
+    const res = await api("/api/decision-letter-reasons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: state.mode, decision: decisionOutcome, rationale_text: state.draft.rationale_text }),
+    });
+    const data = await res.json();
+    dec.reasons_text = data.reasons_text || "";
+    dec.reasons_warning = data.warning || null;
+  } catch (e) {
+    dec.reasons_warning = "Could not draft reasons: " + e.message;
+  }
+  render();
+}
+
+// ---------------- Step 6: Draft & export ----------------
 
 function renderDraft(body) {
   const factsSummaryRows = state.rules.fields.map(f => {
@@ -424,10 +590,13 @@ function renderDraft(body) {
     return `<tr><td>${escapeHtml(f.label)}</td><td>${escapeHtml(entry.value || "(not stated)")}</td></tr>`;
   }).join("");
 
+  const dec = state.decision;
+  const isPositive = dec.outcome === "Approved" || dec.outcome === "Continue";
+
   body.innerHTML = `
     <div class="panel">
-      <h2>Review and edit the draft</h2>
-      <p>Everything below is editable. Nothing is saved until you export.</p>
+      <h2>Risk assessment report</h2>
+      <p>Everything below is editable. Nothing is saved until you export. This document is for the internal case record.</p>
 
       <fieldset>
         <legend>Header</legend>
@@ -473,17 +642,60 @@ function renderDraft(body) {
         <p style="color:var(--text-muted); font-size:13px;">Reviewing officer name/date are left blank in the exported document for manual completion.</p>
       </fieldset>
 
-      <h3>Export</h3>
+      <h3>Export report</h3>
       <div class="export-choice">
-        <button class="btn" id="export-docx-btn">Export as Word (.docx)</button>
-        <button class="btn" id="export-pdf-btn">Export as PDF</button>
+        <button class="btn" id="export-report-docx-btn">Export as Word (.docx)</button>
+        <button class="btn" id="export-report-pdf-btn">Export as PDF</button>
       </div>
-      <div id="export-status"></div>
+      <div id="export-report-status"></div>
+    </div>
 
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="back-to-assess-btn">Back to assessment</button>
-        <button class="btn btn-secondary" id="start-over-btn">Start a new assessment</button>
+    <div class="panel">
+      <h2>Letter to applicant</h2>
+      <p>Outcome: <strong>${escapeHtml(dec.outcome || "(not set)")}</strong>. Everything below is editable -- review before sending, including whether the level of detail in the reasons is appropriate to disclose.</p>
+
+      <fieldset>
+        <legend>Header</legend>
+        <div class="field"><label>Date</label><input type="text" id="l-date" value="${escapeHtml(state.draft.date)}"></div>
+        <div class="field"><label>Applicant's name</label><input type="text" id="l-declarant-name" value="${escapeHtml(dec.declarant_name)}"></div>
+        <div class="field"><label>Case reference (optional)</label><input type="text" id="l-case-ref" value="${escapeHtml(dec.case_reference)}"></div>
+      </fieldset>
+
+      ${isPositive ? `
+      <fieldset>
+        <legend>Conditions</legend>
+        <textarea id="l-conditions" rows="4">${escapeHtml(dec.conditions_text)}</textarea>
+      </fieldset>
+      <fieldset>
+        <legend>Review date</legend>
+        <input type="text" id="l-review-date" value="${escapeHtml(dec.review_date)}">
+      </fieldset>` : `
+      <fieldset>
+        <legend>Reasons</legend>
+        <textarea id="l-reasons" rows="5">${escapeHtml(dec.reasons_text)}</textarea>
+      </fieldset>
+      <fieldset>
+        <legend>Appeal</legend>
+        <div class="field"><label>Recipient</label><input type="text" id="l-appeal-recipient" value="${escapeHtml(dec.appeal_recipient_title)}"></div>
+        <div class="field"><label>Window (days)</label><input type="text" id="l-appeal-days" value="${escapeHtml(String(dec.appeal_window_days))}"></div>
+      </fieldset>`}
+
+      <fieldset>
+        <legend>Sign-off</legend>
+        <div class="field"><label>Preparer name</label><input type="text" id="l-preparer-name" value="${escapeHtml(dec.preparer_name)}"></div>
+      </fieldset>
+
+      <h3>Export letter</h3>
+      <div class="export-choice">
+        <button class="btn" id="export-letter-docx-btn">Export as Word (.docx)</button>
+        <button class="btn" id="export-letter-pdf-btn">Export as PDF</button>
       </div>
+      <div id="export-letter-status"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="back-to-decision-btn">Back to decision</button>
+      <button class="btn btn-secondary" id="start-over-btn">Start a new assessment</button>
     </div>`;
 
   const bind = (id, key) => document.getElementById(id).oninput = e => { state.draft[key] = e.target.value; };
@@ -498,9 +710,25 @@ function renderDraft(body) {
   const mSelect = document.getElementById("d-manageability");
   if (mSelect) mSelect.onchange = e => { state.draft.manageability = e.target.value; };
 
-  document.getElementById("export-docx-btn").onclick = () => doExport("docx");
-  document.getElementById("export-pdf-btn").onclick = () => doExport("pdf");
-  document.getElementById("back-to-assess-btn").onclick = () => { state.step = "assess"; render(); };
+  const bindDec = (id, key) => document.getElementById(id).oninput = e => { dec[key] = e.target.value; };
+  document.getElementById("l-date").oninput = e => { state.draft.date = e.target.value; };
+  bindDec("l-declarant-name", "declarant_name");
+  bindDec("l-case-ref", "case_reference");
+  bindDec("l-preparer-name", "preparer_name");
+  if (isPositive) {
+    bindDec("l-conditions", "conditions_text");
+    bindDec("l-review-date", "review_date");
+  } else {
+    bindDec("l-reasons", "reasons_text");
+    bindDec("l-appeal-recipient", "appeal_recipient_title");
+    document.getElementById("l-appeal-days").oninput = e => { dec.appeal_window_days = parseInt(e.target.value, 10) || 21; };
+  }
+
+  document.getElementById("export-report-docx-btn").onclick = () => doExport("docx");
+  document.getElementById("export-report-pdf-btn").onclick = () => doExport("pdf");
+  document.getElementById("export-letter-docx-btn").onclick = () => doExportLetter("docx");
+  document.getElementById("export-letter-pdf-btn").onclick = () => doExportLetter("pdf");
+  document.getElementById("back-to-decision-btn").onclick = () => { state.step = "decision"; render(); };
   document.getElementById("start-over-btn").onclick = () => {
     if (confirm("Discard this session and start a new assessment?")) location.reload();
   };
@@ -535,6 +763,45 @@ async function doExport(format) {
     const a = document.createElement("a");
     a.href = url;
     a.download = `risk-assessment.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    status.innerHTML = `<div class="warning-box">Downloaded. Nothing was saved on the server.</div>`;
+  } catch (e) {
+    status.innerHTML = `<div class="error-box">Export failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function doExportLetter(format) {
+  const status = document.getElementById("export-letter-status");
+  status.innerHTML = `<div class="warning-box">Generating ${format.toUpperCase()}…</div>`;
+  const dec = state.decision;
+  const letter = {
+    mode: state.mode,
+    decision: dec.outcome,
+    date: state.draft.date,
+    declarant_name: dec.declarant_name,
+    case_reference: dec.case_reference,
+    grade: state.draft.grade,
+    conditions_text: dec.conditions_text,
+    reasons_text: dec.reasons_text,
+    review_date: dec.review_date,
+    appeal_window_days: dec.appeal_window_days,
+    appeal_recipient_title: dec.appeal_recipient_title,
+    preparer_name: dec.preparer_name,
+  };
+  try {
+    const res = await api("/api/export-letter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ letter, format }),
+    });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `decision-letter.${format}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
