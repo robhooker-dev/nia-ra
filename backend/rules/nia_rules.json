@@ -1,0 +1,48 @@
+{
+  "mode": "NIA",
+  "label": "Notifiable Inappropriate Association",
+  "_comment": "STARTER RULE SET -- built from publicly available material only (Vetting APP, Code of Ethics, fragments of the Counter Corruption APP). This is a draft starting point, not the definitive national standard. Replace or extend the fields below with your own CCU-informed grading criteria -- no code changes needed. Edited by hand or via the app's rules editor; loaded fresh on every request.",
+
+  "fields": [
+    { "key": "declarant_name", "label": "Declarant's name", "required_for_sufficiency": false, "used_in_grading": false },
+    { "key": "declarant_role", "label": "Declarant's role", "required_for_sufficiency": false, "used_in_grading": true },
+    { "key": "declarant_unit", "label": "Declarant's unit", "required_for_sufficiency": false, "used_in_grading": false },
+    { "key": "nature_of_association", "label": "Nature of the association (personal, family, prior professional, social, etc.)", "required_for_sufficiency": true, "why_it_matters": "The type of relationship shapes what leverage or access risk is plausible -- a family tie carries different risk than a passing social acquaintance.", "used_in_grading": true },
+    { "key": "how_known", "label": "How the declarant knows the associate", "required_for_sufficiency": true, "why_it_matters": "The origin of the relationship helps judge how entrenched or incidental it is.", "used_in_grading": true },
+    { "key": "frequency_duration", "label": "Frequency and duration of contact", "required_for_sufficiency": false, "used_in_grading": true },
+    { "key": "category_of_concern", "label": "Category of concern the associate falls into, if any (subject of criminal proceedings, known criminal associations, extremist links, investigative/media/legal profession where conflict-relevant, commercial relationship with the force)", "required_for_sufficiency": false, "used_in_grading": true },
+    { "key": "ongoing_or_historic", "label": "Whether the association is ongoing or historic", "required_for_sufficiency": true, "why_it_matters": "Frequency and currency of contact materially affects the risk rating and cannot be assumed from the rest of the account.", "used_in_grading": true },
+    { "key": "declarant_access_level", "label": "Declarant's role/access level (what information or operational access they hold that could be put at risk)", "required_for_sufficiency": true, "why_it_matters": "The same association carries higher risk the more sensitive the declarant's access -- without this, the tool cannot judge what is actually at stake.", "used_in_grading": true },
+    { "key": "prior_intelligence", "label": "Any prior relevant intelligence already known about the associate", "required_for_sufficiency": false, "used_in_grading": true },
+    { "key": "disclosure_route", "label": "Whether the declaration was proactive (self-reported) or came to light another way", "required_for_sufficiency": false, "used_in_grading": true }
+  ],
+
+  "grading_factors": [
+    { "factor": "Proximity of the associate to criminality, extremism, or active corruption risk", "weight": "highest" },
+    { "factor": "Whether the association gives the associate potential access to sensitive information or leverage over the declarant", "weight": "high" },
+    { "factor": "Frequency/currency of contact (ongoing vs historic/distant)", "weight": "medium" },
+    { "factor": "Declarant's role and access level (higher access = higher risk for the same association)", "weight": "medium" },
+    { "factor": "Whether full and proactive disclosure was made", "weight": "mitigating" }
+  ],
+  "grading_notes": [
+    "Professions such as journalists or legal professionals must NOT be treated as inherently high-risk by category alone -- risk turns on whether the specific relationship creates an actual conflict with the declarant's duties, per national guidance."
+  ],
+  "grading_definitions": {
+    "Low": "No material conflict identified; disclosure was proactive and complete; recommend approve, note for routine review.",
+    "Medium": "Some conflict or risk factor present but manageable with conditions; recommend approve with conditions and a defined review date.",
+    "High": "Significant conflict, proximity to criminality/corruption risk, or access/leverage concern; recommend escalation to a senior decision-maker or ADC-equivalent process rather than automatic approval."
+  },
+
+  "manageability": {
+    "_comment": "NIA mode only. A High grade defaults to 'Manageable' unless one of these fact patterns is present, in which case it becomes 'Escalate for manageability review'. The tool never recommends an outcome (cease contact, redeployment, referral) -- that decision sits with the officer/ADC-equivalent process.",
+    "escalation_triggers": [
+      "Ongoing (not historic) contact with someone who is the subject of a current criminal investigation or prosecution",
+      "Evidence or strong indication that the associate has, or could obtain, leverage over the declarant (e.g. financial entanglement, coercion, blackmail potential)",
+      "The declarant holds high-sensitivity access (e.g. to live intelligence, informant handling, or covert operations) and the association is both current and undisclosed until now",
+      "A pattern of repeated notifiable associations with the same category of concern, suggesting the current declaration isn't an isolated instance",
+      "No credible mitigation is identifiable from the facts available (i.e. conditions/monitoring alone would not plausibly reduce the risk)"
+    ]
+  },
+
+  "policy_basis": ["Vetting APP", "Code of Ethics", "Counter Corruption APP"]
+}

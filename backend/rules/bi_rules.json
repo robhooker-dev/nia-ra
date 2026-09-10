@@ -1,0 +1,36 @@
+{
+  "mode": "BI",
+  "label": "Business Interest",
+  "_comment": "STARTER RULE SET -- built from publicly available material only (Vetting APP, Code of Ethics, Working Time Regulations 1998, fragments of the Counter Corruption APP and public IOPC reporting). This is a draft starting point, not the definitive national standard. Replace or extend the fields below with your own CCU-informed grading criteria -- no code changes needed. Edited by hand or via the app's rules editor; loaded fresh on every request.",
+
+  "fields": [
+    { "key": "declarant_name", "label": "Declarant's name", "required_for_sufficiency": false, "used_in_grading": false },
+    { "key": "declarant_role", "label": "Declarant's role", "required_for_sufficiency": false, "used_in_grading": true },
+    { "key": "declarant_unit", "label": "Declarant's unit", "required_for_sufficiency": false, "used_in_grading": false },
+    { "key": "nature_of_business", "label": "Nature of the business/activity", "required_for_sufficiency": true, "why_it_matters": "What the business actually does is the starting point for judging any conflict with policing duties.", "used_in_grading": true },
+    { "key": "hours_involved", "label": "Hours per week involved, and cumulative hours combined with police role", "required_for_sufficiency": true, "why_it_matters": "Working Time Regulations 1998 relevance (48-hour week) cannot be assessed without this, and it also indicates how material the interest is.", "used_in_grading": true },
+    { "key": "relation_to_duties", "label": "Whether the business could conflict with policing duties, the Code of Ethics, or create a perception of conflict", "required_for_sufficiency": true, "why_it_matters": "This is the central question the grading turns on -- without it there is nothing to weigh.", "used_in_grading": true },
+    { "key": "exploitation_potential", "label": "Whether the business could exploit the declarant's role, access, or force information", "required_for_sufficiency": false, "used_in_grading": true },
+    { "key": "financial_structure", "label": "Financial structure (sole trader, director, partner, employee of the business, silent investor, etc.)", "required_for_sufficiency": false, "used_in_grading": true },
+    { "key": "existing_conditions", "label": "Any existing conditions or monitoring already in place (for a renewal/review case)", "required_for_sufficiency": false, "used_in_grading": true },
+    { "key": "line_manager_comments", "label": "Line manager comments, if included in the source document", "required_for_sufficiency": false, "used_in_grading": true }
+  ],
+
+  "grading_factors": [
+    { "factor": "Degree of conflict (or perceived conflict) with policing duties or the Code of Ethics", "weight": "highest" },
+    { "factor": "Potential for the business to exploit the declarant's role, information, or contacts", "weight": "high" },
+    { "factor": "Working Time Regulations compliance (hours combined with police role)", "weight": "medium" },
+    { "factor": "Public confidence/reputational impact if the interest became publicly known", "weight": "medium" },
+    { "factor": "Whether conditions from a prior approval are being adhered to (renewal cases)", "weight": "high" }
+  ],
+  "grading_notes": [
+    "IOPC reporting flags non-adherence to conditions on approved interests, and continuation of declined interests, as recurring corruption risk areas -- weigh renewal/review cases against this specifically."
+  ],
+  "grading_definitions": {
+    "Low": "No material conflict identified; disclosure was proactive and complete; recommend approve, note for routine review.",
+    "Medium": "Some conflict or risk factor present but manageable with conditions; recommend approve with conditions and a defined review date.",
+    "High": "Significant conflict, proximity to criminality/corruption risk, or access/leverage concern; recommend escalation to a senior decision-maker or ADC-equivalent process rather than automatic approval."
+  },
+
+  "policy_basis": ["Vetting APP", "Code of Ethics", "Working Time Regulations 1998", "Counter Corruption APP"]
+}
