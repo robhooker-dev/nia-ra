@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: nia-ra
+    runtime: python
+    plan: free              # no persistent disk needed -- this app is
+                             # stateless by design (PRD Section 9), so the
+                             # free plan's ephemeral storage is not a problem
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false          # set in the Render dashboard, not committed
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5
+      - key: SITE_USERNAME
+        sync: false
+      - key: SITE_PASSWORD
+        sync: false          # shared front-door gate -- see README

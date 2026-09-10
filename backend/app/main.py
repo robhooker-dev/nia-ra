@@ -5,10 +5,12 @@ between requests: every endpoint is stateless by design (PRD Section 9),
 so the frontend is the only thing holding a session's state, for exactly
 as long as the browser tab is open.
 """
+import base64
+import secrets
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +26,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_site_password(request: Request, call_next):
+    """Optional shared front-door gate for a semi-public deployment (a
+    Render URL with no link-sharing control). This prototype has no
+    per-user auth at all, so with no gate configured a stray link would
+    let anyone burn the configured AI key. Off by default (blank
+    SITE_PASSWORD). /api/health stays open so the hosting platform's own
+    health check (which sends no credentials) still passes."""
+    if not config.site_gate_configured() or request.url.path == "/api/health":
+        return await call_next(request)
+
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Basic "):
+        try:
+            username, _, password = base64.b64decode(auth[6:]).decode("utf-8").partition(":")
+        except Exception:
+            username, password = "", ""
+        if secrets.compare_digest(username, config.SITE_USERNAME) and secrets.compare_digest(password, config.SITE_PASSWORD):
+            return await call_next(request)
+
+    return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="NIA-RA"'})
 
 
 @app.get("/api/health")

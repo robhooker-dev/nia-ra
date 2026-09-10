@@ -74,6 +74,19 @@ def ocr_configured() -> bool:
     return _ocr_available
 
 
+# ---- Shared front-door gate (optional) ----
+# A coarse HTTP Basic Auth challenge in front of the whole app -- there is
+# no per-user auth in this prototype at all (see PRD Section 2), so on a
+# public Render URL this is the only thing standing between a stray link
+# and your AI usage/API key. Off by default (blank password).
+SITE_USERNAME = get("SITE_USERNAME", "nia-ra")
+SITE_PASSWORD = get("SITE_PASSWORD")
+
+
+def site_gate_configured() -> bool:
+    return bool(SITE_PASSWORD)
+
+
 def all_modes() -> dict:
     """Everything /api/health reports. Add new predicates here, not ad hoc."""
     return {
